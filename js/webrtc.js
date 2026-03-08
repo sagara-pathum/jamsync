@@ -1,6 +1,22 @@
 const configuration = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
     ]
 };
 
@@ -14,8 +30,11 @@ let onRemoteTrackAdd;
 let onConnectionStateChange;
 let onChatMessageReceived;
 
+let pendingCandidates = [];
+
 function createPeerConnection(isInitiator, roomId) {
     peerConnection = new RTCPeerConnection(configuration);
+    pendingCandidates = []; // reset on new connection
 
     if (isInitiator) {
         dataChannel = peerConnection.createDataChannel('jam-chat');
@@ -74,6 +93,17 @@ function createPeerConnection(isInitiator, roomId) {
     }
 }
 
+async function processPendingCandidates() {
+    for (const candidate of pendingCandidates) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+            console.error("Error adding pending candidate:", err);
+        }
+    }
+    pendingCandidates = [];
+}
+
 async function handleSignalingMessage(message, roomId) {
     if (message.type === 'ready') {
         // Only initiate if we don't have a peer connection yet
@@ -94,18 +124,24 @@ async function handleSignalingMessage(message, roomId) {
                 answer: peerConnection.localDescription,
                 room: roomId
             });
+            await processPendingCandidates();
         } catch (err) {
             console.error("Error handling offer:", err);
         }
     } else if (message.type === 'answer' && peerConnection) {
         try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+            await processPendingCandidates();
         } catch (err) {
             console.error("Error handling answer:", err);
         }
     } else if (message.type === 'candidate' && peerConnection) {
         try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+            if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+            } else {
+                pendingCandidates.push(message.candidate);
+            }
         } catch (err) {
             console.error("Error handling candidate:", err);
         }
