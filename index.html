@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JamSync | Real-Time Remote Music Jam</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Chat Area -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>🎵 JamSync</h2>
+                <div class="status-indicator">
+                    <span id="connection-dot" class="dot offline"></span>
+                    <span id="connection-status">Disconnected</span>
+                </div>
+            </div>
+
+            <div class="room-controls">
+                <button id="create-room-btn" class="btn primary">Create New Jam Room</button>
+                <div class="divider"><span>OR</span></div>
+                <input type="text" id="room-id-input" placeholder="Enter Room ID to Join" />
+                <button id="join-room-btn" class="btn secondary">Join Existing Room</button>
+            </div>
+
+            <div id="room-info" class="room-info hidden">
+                <p class="room-link-text">Share this link with your partner:</p>
+                <div class="share-box">
+                    <input type="text" id="display-room-id" readonly />
+                    <button id="copy-room-btn" class="btn primary icon-btn" title="Copy Link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-section">
+                <div class="chat-header">
+                    <h3>Band Chat</h3>
+                </div>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message system">Welcome to JamSync! Join a room to start jamming and chatting.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Type a message..." disabled />
+                    <button id="send-btn" class="btn icon-btn" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Video Area -->
+        <main class="main-content">
+            <div class="video-grid" id="video-grid">
+                <!-- Local Video -->
+                <div class="video-card local">
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <div class="video-label">You</div>
+                </div>
+                
+                <!-- Remote Video -->
+                <div class="video-card remote waiting" id="remote-container">
+                    <div class="waiting-text" id="remote-waiting-text">Waiting for a jam partner...</div>
+                    <video id="remote-video" autoplay playsinline></video>
+                    <div class="video-label" id="remote-label" style="display: none;">Partner</div>
+                </div>
+            </div>
+
+            <!-- Controls (Bottom Bar) -->
+            <div class="controls-bar">
+                <button id="toggle-audio-btn" class="btn control-btn active">
+                    <span class="icon">🎙️</span> Mute
+                </button>
+                <button id="toggle-video-btn" class="btn control-btn active">
+                    <span class="icon">📹</span> Video Off
+                </button>
+                <button id="leave-room-btn" class="btn control-btn danger hidden">
+                    <span class="icon">🚪</span> Leave Jam
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/signaling.js"></script>
+    <script src="js/webrtc.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
