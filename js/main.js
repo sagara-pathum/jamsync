@@ -93,10 +93,15 @@ function handleRoomConnection(roomId, isCreator) {
         chatInput.disabled = false;
         sendBtn.disabled = false;
         
+        // Fix the role BEFORE sending ready so it's never determined by message timing
+        // Creator = initiator (sends offer), Joiner = receiver (sends answer)
+        initWebRTC(isCreator, currentRoom);
+        
         addSystemMessage(`Joined room: ${currentRoom}. Waiting for partner...`);
         sendSignalingMessage({ type: 'ready', room: currentRoom });
     });
 }
+
 
 if (createRoomBtn) {
     createRoomBtn.addEventListener('click', () => {

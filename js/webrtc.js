@@ -2,6 +2,7 @@ const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
         {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
@@ -24,19 +25,32 @@ let peerConnection;
 let localStream;
 let remoteStream;
 let dataChannel;
+let pendingCandidates = [];
 
 // Callbacks
 let onRemoteTrackAdd;
 let onConnectionStateChange;
 let onChatMessageReceived;
 
-let pendingCandidates = [];
+// isInitiator is set once at join time (true = room creator, false = joiner)
+// This prevents the "glare" race condition where both peers try to become initiator
+let _isInitiator = false;
+let _roomId = '';
 
-function createPeerConnection(isInitiator, roomId) {
+function initWebRTC(isInitiator, roomId) {
+    _isInitiator = isInitiator;
+    _roomId = roomId;
+}
+
+function createPeerConnection() {
+    if (peerConnection) {
+        peerConnection.close();
+    }
     peerConnection = new RTCPeerConnection(configuration);
-    pendingCandidates = []; // reset on new connection
+    pendingCandidates = [];
+    remoteStream = null;
 
-    if (isInitiator) {
+    if (_isInitiator) {
         dataChannel = peerConnection.createDataChannel('jam-chat');
         setupDataChannel(dataChannel);
     } else {
@@ -51,14 +65,26 @@ function createPeerConnection(isInitiator, roomId) {
             sendSignalingMessage({
                 type: 'candidate',
                 candidate: event.candidate,
-                room: roomId
+                room: _roomId
             });
+        }
+    };
+
+    peerConnection.onicegatheringstatechange = () => {
+        console.log("ICE gathering state:", peerConnection.iceGatheringState);
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log("ICE connection state:", peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'failed') {
+            console.warn("ICE failed, attempting restart...");
+            peerConnection.restartIce();
         }
     };
 
     peerConnection.onconnectionstatechange = () => {
         console.log("Connection state:", peerConnection.connectionState);
-        if(onConnectionStateChange) {
+        if (onConnectionStateChange) {
             onConnectionStateChange(peerConnection.connectionState);
         }
     };
@@ -78,18 +104,23 @@ function createPeerConnection(isInitiator, roomId) {
             peerConnection.addTrack(track, localStream);
         });
     }
+}
 
-    if (isInitiator) {
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
-                sendSignalingMessage({
-                    type: 'offer',
-                    offer: peerConnection.localDescription,
-                    room: roomId
-                });
-            })
-            .catch(err => console.error("Error creating offer:", err));
+async function startCall() {
+    // Only the room creator (initiator) creates the offer
+    if (!_isInitiator) return;
+    createPeerConnection();
+    try {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        sendSignalingMessage({
+            type: 'offer',
+            offer: peerConnection.localDescription,
+            room: _roomId
+        });
+        console.log("Offer sent.");
+    } catch (err) {
+        console.error("Error creating offer:", err);
     }
 }
 
@@ -106,17 +137,22 @@ async function processPendingCandidates() {
 
 async function handleSignalingMessage(message, roomId) {
     if (message.type === 'ready') {
-        // Only initiate if we don't have a peer connection yet
-        if (!peerConnection) {
-            console.log("Peer is ready, initiating offer...");
-            createPeerConnection(true, roomId);
+        // The room creator sees this and starts the call
+        // The joiner also sends 'ready' so the creator knows to begin
+        if (_isInitiator) {
+            console.log("Joiner is ready, starting call as initiator...");
+            await startCall();
         }
+        // If we are NOT the initiator, we wait for the offer
     } else if (message.type === 'offer') {
+        // Only the joiner (non-initiator) should receive and handle an offer
         if (!peerConnection) {
-            createPeerConnection(false, roomId);
+            createPeerConnection();
         }
         try {
+            console.log("Received offer, creating answer...");
             await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
+            await processPendingCandidates();
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             sendSignalingMessage({
@@ -124,12 +160,13 @@ async function handleSignalingMessage(message, roomId) {
                 answer: peerConnection.localDescription,
                 room: roomId
             });
-            await processPendingCandidates();
+            console.log("Answer sent.");
         } catch (err) {
             console.error("Error handling offer:", err);
         }
     } else if (message.type === 'answer' && peerConnection) {
         try {
+            console.log("Received answer...");
             await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
             await processPendingCandidates();
         } catch (err) {
@@ -153,7 +190,7 @@ function setupDataChannel(channel) {
         console.log("Data channel is open");
     };
     channel.onmessage = (event) => {
-        if(onChatMessageReceived) {
+        if (onChatMessageReceived) {
             onChatMessageReceived(event.data);
         }
     };

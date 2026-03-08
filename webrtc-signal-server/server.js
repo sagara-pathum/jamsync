@@ -2,14 +2,59 @@ const WebSocket = require("ws");
 
 const wss = new WebSocket.Server({ port: process.env.PORT || 10000 });
 
+// rooms[roomId] = Set of WebSocket clients in that room
+const rooms = {};
+
 wss.on("connection", ws => {
+  ws._room = null;
+
   ws.on("message", message => {
-    wss.clients.forEach(client => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (e) {
+      return;
+    }
+
+    const roomId = data.room;
+    if (!roomId) return;
+
+    // Always track which room this socket is in
+    if (ws._room !== roomId) {
+      // Leave previous room if any
+      if (ws._room && rooms[ws._room]) {
+        rooms[ws._room].delete(ws);
+        if (rooms[ws._room].size === 0) delete rooms[ws._room];
       }
-    });
+      ws._room = roomId;
+      if (!rooms[roomId]) rooms[roomId] = new Set();
+      rooms[roomId].add(ws);
+    }
+
+    // Relay message only to OTHER clients in the SAME room
+    const roomClients = rooms[roomId];
+    if (roomClients) {
+      roomClients.forEach(client => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(data));
+        }
+      });
+    }
+  });
+
+  ws.on("close", () => {
+    const roomId = ws._room;
+    if (roomId && rooms[roomId]) {
+      rooms[roomId].delete(ws);
+      // Notify remaining peers in the room that this peer left
+      rooms[roomId].forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({ type: 'leave', room: roomId }));
+        }
+      });
+      if (rooms[roomId].size === 0) delete rooms[roomId];
+    }
   });
 });
 
-console.log("Signaling server running");
+console.log("Signaling server running with room support");
