@@ -11,39 +11,50 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar / Chat Area -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>RTCnet</h2>
-                <div class="status-indicator">
-                    <span id="connection-dot" class="dot offline"></span>
-                    <span id="connection-status">Disconnected</span>
+        <!-- Lobby Area -->
+        <div id="lobby-screen" class="lobby-container">
+            <div class="lobby-card">
+                <h2>Welcome to RTCnet</h2>
+                <p>Join a multi-party video conference</p>
+                <div class="lobby-form">
+                    <input type="text" id="username-input" placeholder="Your Name" />
+                    <input type="text" id="join-room-id-input" placeholder="Room ID (Leave blank to generate)" />
+                    <button id="lobby-join-btn" class="btn primary">Join Conference</button>
+                    <div id="camera-preview-container" class="camera-preview">
+                        <video id="preview-video" autoplay playsinline muted></video>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <div class="room-controls">
-                <button id="create-room-btn" class="btn primary">Create New Jam Room</button>
-                <div class="divider"><span>OR</span></div>
-                <input type="text" id="room-id-input" placeholder="Enter Room ID to Join" />
-                <button id="join-room-btn" class="btn secondary">Join Existing Room</button>
-            </div>
-
-            <div id="room-info" class="room-info hidden">
-                <p class="room-link-text">Share this link with your partner:</p>
-                <div class="share-box">
-                    <input type="text" id="display-room-id" readonly />
-                    <button id="copy-room-btn" class="btn primary icon-btn" title="Copy Link">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                    </button>
+        <!-- Main Workspace (Hidden Initially) -->
+        <div id="main-workspace" class="workspace-container hidden">
+            <!-- Sidebar / Chat Area -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>RTCnet</h2>
+                    <div class="status-indicator">
+                        <span id="connection-dot" class="dot offline"></span>
+                        <span id="connection-status">Disconnected</span>
+                    </div>
                 </div>
-            </div>
+
+                <div id="room-info" class="room-info">
+                    <p class="room-link-text">Invite others to join:</p>
+                    <div class="share-box">
+                        <input type="text" id="display-room-id" readonly />
+                        <button id="copy-room-btn" class="btn primary icon-btn" title="Copy Link">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                        </button>
+                    </div>
+                </div>
 
             <div class="chat-section">
                 <div class="chat-header">
                     <h3>TEXT-CHAT</h3>
                 </div>
                 <div class="chat-messages" id="chat-messages">
-                    <div class="message system">Welcome To RTCnet</div>
+                    <div class="message system">Welcome To RTCnet. You can now chat with other participants.</div>
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="chat-input" placeholder="Type a message..." disabled />
@@ -52,39 +63,40 @@
                     </button>
                 </div>
             </div>
-        </aside>
+            </aside>
 
-        <!-- Main Video Area -->
-        <main class="main-content">
-            <div class="video-grid" id="video-grid">
-                <!-- Local Video -->
-                <div class="video-card local">
-                    <video id="local-video" autoplay playsinline muted></video>
-                    <div class="video-label">You</div>
+            <!-- Main Video Area -->
+            <main class="main-content">
+                <div class="conference-area" id="conference-area">
+                    <!-- Pinned Video Area (Hidden if no video is pinned) -->
+                    <div id="pinned-video-container" class="pinned-video-container hidden"></div>
+                    
+                    <!-- Grid of all other videos -->
+                    <div class="video-grid" id="video-grid">
+                        <!-- Local Video -->
+                        <div class="video-card local" id="local-video-wrapper">
+                            <video id="local-video" autoplay playsinline muted></video>
+                            <div class="video-label">You</div>
+                            <button class="pin-btn" onclick="togglePin('local-video-wrapper')">📌</button>
+                        </div>
+                        <!-- Remote videos will be injected here dynamically -->
+                    </div>
                 </div>
-                
-                <!-- Remote Video -->
-                <div class="video-card remote waiting" id="remote-container">
-                    <div class="waiting-text" id="remote-waiting-text">Waiting for a jam partner...</div>
-                    <video id="remote-video" autoplay playsinline></video>
-                    <div class="video-label" id="remote-label" style="display: none;">Partner</div>
-                </div>
-            </div>
 
-            <!-- Controls (Bottom Bar) -->
-            <div class="controls-bar">
-                <button id="toggle-audio-btn" class="btn control-btn active">
-                    <span class="icon">🎙️</span> Mute
-                </button>
-                <button id="toggle-video-btn" class="btn control-btn active">
-                    <span class="icon">📹</span> Video Off
-                </button>
-                <button id="leave-room-btn" class="btn control-btn danger hidden">
-                    <span class="icon">🚪</span> Leave Jam
-                </button>
-            </div>
-        </main>
-    </div>
+                <!-- Controls (Bottom Bar) -->
+                <div class="controls-bar">
+                    <button id="toggle-audio-btn" class="btn control-btn active">
+                        <span class="icon">🎙️</span> Mute
+                    </button>
+                    <button id="toggle-video-btn" class="btn control-btn active">
+                        <span class="icon">📹</span> Video Off
+                    </button>
+                    <button id="leave-room-btn" class="btn control-btn danger">
+                        <span class="icon">🚪</span> Leave
+                    </button>
+                </div>
+            </main>
+        </div>
 
     <!-- Scripts -->
     <script src="js/signaling.js"></script>

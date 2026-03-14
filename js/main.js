@@ -1,122 +1,115 @@
 let currentRoom = '';
+let myPeerId = '';
+let myName = '';
 let isMuted = false;
 let isVideoOff = false;
 
 // DOM Elements
+const lobbyScreen = document.getElementById('lobby-screen');
+const mainWorkspace = document.getElementById('main-workspace');
+const usernameInput = document.getElementById('username-input');
+const joinRoomIdInput = document.getElementById('join-room-id-input');
+const lobbyJoinBtn = document.getElementById('lobby-join-btn');
+const previewVideo = document.getElementById('preview-video');
+
 const localVideo = document.getElementById('local-video');
-const remoteVideo = document.getElementById('remote-video');
+const videoGrid = document.getElementById('video-grid');
+const conferenceArea = document.getElementById('conference-area');
+const pinnedVideoContainer = document.getElementById('pinned-video-container');
+
 const toggleAudioBtn = document.getElementById('toggle-audio-btn');
 const toggleVideoBtn = document.getElementById('toggle-video-btn');
-const joinRoomBtn = document.getElementById('join-room-btn');
-const createRoomBtn = document.getElementById('create-room-btn');
 const leaveRoomBtn = document.getElementById('leave-room-btn');
-const roomIdInput = document.getElementById('room-id-input');
-const roomInfo = document.getElementById('room-info');
 const displayRoomId = document.getElementById('display-room-id');
 const copyRoomBtn = document.getElementById('copy-room-btn');
+
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const chatMessages = document.getElementById('chat-messages');
 const connectionDot = document.getElementById('connection-dot');
 const connectionStatus = document.getElementById('connection-status');
-const remoteContainer = document.getElementById('remote-container');
-const remoteWaitingText = document.getElementById('remote-waiting-text');
-const remoteLabel = document.getElementById('remote-label');
 
-// Initialize local media stream
-async function initMedia() {
+// Helper to Generate IDs
+function generateId() {
+    return Math.random().toString(36).substring(2, 10).toUpperCase();
+}
+
+// Initialize local media stream for lobby preview
+async function initMediaPreview() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        addSystemMessage('Camera and microphone access granted.');
+        previewVideo.srcObject = localStream;
     } catch (err) {
         console.error("Error accessing media devices.", err);
-        addSystemMessage('Failed to access camera/microphone. Please ensure permissions are granted.');
+        alert('Failed to access camera/microphone. Please ensure permissions are granted.');
     }
 }
 
-// Join and Create Room Logic
-function generateRoomId() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
+function handleJoinConference() {
+    myName = usernameInput.value.trim();
+    let requestedRoom = joinRoomIdInput.value.trim();
 
-function handleRoomConnection(roomId, isCreator) {
-    currentRoom = roomId;
-    window.currentRoom = roomId;
-    
-    if (createRoomBtn) createRoomBtn.disabled = true;
-    joinRoomBtn.disabled = true;
-    roomIdInput.disabled = true;
-    
-    if (isCreator) {
-        createRoomBtn.textContent = "Creating...";
-    } else {
-        joinRoomBtn.textContent = "Connecting...";
+    if (!myName) {
+        alert("Please enter your name.");
+        return;
     }
 
+    if (!requestedRoom) {
+        requestedRoom = generateId(); 
+    }
+
+    currentRoom = requestedRoom;
+    window.currentRoom = currentRoom;
+    myPeerId = generateId();
+
+    // Transition UI
+    lobbyScreen.classList.add('hidden');
+    mainWorkspace.classList.remove('hidden');
+
+    // Transfer stream to main view
+    localVideo.srcObject = localStream;
+
+    // Room Info Setup
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', currentRoom);
+    displayRoomId.value = url.toString();
+
+    // Init WebRTC vars
+    initWebRTC(myPeerId, myName, currentRoom);
+
+    // Connect Signaling
     connectSignalingServer((msg) => {
-        // Wait for connection / matching room
         if(msg.room !== currentRoom) return;
         
-        handleSignalingMessage(msg, currentRoom);
-        
-        if(msg.type === 'leave') {
-            addSystemMessage('Partner left the room.');
-            remoteContainer.classList.add('waiting');
-            remoteWaitingText.style.display = 'block';
-            remoteLabel.style.display = 'none';
-            remoteVideo.srcObject = null;
-            if(peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
+        handleSignalingMessage(msg);
+
+        if (msg.type === 'leave') {
+            const leaveSourceId = msg.source || msg.peerId;
+            removeRemoteVideo(leaveSourceId);
+            addSystemMessage(`Someone left the conference.`);
         }
     }, () => {
         // Connected to Signaling
         connectionDot.classList.remove('offline');
         connectionDot.classList.add('online');
         connectionStatus.textContent = 'Connected';
-        
-        if (isCreator) {
-            createRoomBtn.textContent = "Room Created";
-            roomInfo.classList.remove('hidden');
-            
-            // Generate full URL
-            const url = new URL(window.location.href);
-            url.searchParams.set('room', roomId);
-            displayRoomId.value = url.toString();
-        } else {
-            joinRoomBtn.textContent = "Joined";
-        }
-        
-        leaveRoomBtn.classList.remove('hidden');
+
         chatInput.disabled = false;
         sendBtn.disabled = false;
+
+        addSystemMessage(`Joined room: ${currentRoom}`);
         
-        // Fix the role BEFORE sending ready so it's never determined by message timing
-        // Creator = initiator (sends offer), Joiner = receiver (sends answer)
-        initWebRTC(isCreator, currentRoom);
-        
-        addSystemMessage(`Joined room: ${currentRoom}. Waiting for partner...`);
-        sendSignalingMessage({ type: 'ready', room: currentRoom });
+        // Announce existence to others in the room
+        sendSignalingMessage({ 
+            type: 'join', 
+            peerId: myPeerId, 
+            username: myName, 
+            room: currentRoom 
+        });
     });
 }
 
-
-if (createRoomBtn) {
-    createRoomBtn.addEventListener('click', () => {
-        handleRoomConnection(generateRoomId(), true);
-    });
-}
-
-joinRoomBtn.addEventListener('click', () => {
-    const roomId = roomIdInput.value.trim();
-    if (!roomId) {
-        alert("Please enter a Room ID to join.");
-        return;
-    }
-    handleRoomConnection(roomId, false);
-});
+lobbyJoinBtn.addEventListener('click', handleJoinConference);
 
 if (copyRoomBtn) {
     copyRoomBtn.addEventListener('click', () => {
@@ -134,7 +127,7 @@ if (copyRoomBtn) {
 }
 
 leaveRoomBtn.addEventListener('click', () => {
-    window.location.reload(); // Quick way to cleanup and restart
+    window.location.href = window.location.pathname; // strip URL params and restart
 });
 
 // Control Buttons
@@ -168,12 +161,9 @@ toggleVideoBtn.addEventListener('click', () => {
 function sendChat() {
     const text = chatInput.value.trim();
     if (text) {
-        if (sendChatMessage(text)) {
-            addChatMessage('You', text, 'local');
-            chatInput.value = '';
-        } else {
-            addSystemMessage('Cannot send message. Partner is not connected.');
-        }
+        const sent = sendChatMessage(text);
+        addChatMessage('You', text, 'local');
+        chatInput.value = '';
     }
 }
 
@@ -185,7 +175,22 @@ chatInput.addEventListener('keypress', (e) => {
 function addChatMessage(sender, text, type) {
     const div = document.createElement('div');
     div.classList.add('message', type);
-    div.textContent = text; // Just text
+    
+    const nameSpan = document.createElement('strong');
+    nameSpan.textContent = sender + ": ";
+    nameSpan.style.display = 'block';
+    nameSpan.style.fontSize = '0.8rem';
+    nameSpan.style.opacity = '0.7';
+    nameSpan.style.marginBottom = '4px';
+
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+
+    if (type !== 'system') {
+        div.appendChild(nameSpan);
+    }
+    div.appendChild(textSpan);
+
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -194,43 +199,122 @@ function addSystemMessage(text) {
     addChatMessage('System', text, 'system');
 }
 
-// Bind WebRTC Callbacks
-onRemoteTrackAdd = (stream) => {
-    remoteVideo.srcObject = stream;
-    remoteContainer.classList.remove('waiting');
-    remoteWaitingText.style.display = 'none';
-    remoteLabel.style.display = 'block';
+// Global scope Pin Controller
+let currentPinnedId = null;
+window.togglePin = function(containerId) {
+    const containerEl = document.getElementById(containerId);
+    if (!containerEl) return;
+
+    // Unpin if currently pinned
+    if (currentPinnedId === containerId) {
+        videoGrid.appendChild(containerEl); // move back to grid
+        pinnedVideoContainer.innerHTML = '';
+        pinnedVideoContainer.classList.add('hidden');
+        conferenceArea.classList.remove('has-pinned');
+        currentPinnedId = null;
+        return;
+    }
+
+    // Pin new
+    // If something was already pinned, move it back
+    if (currentPinnedId) {
+        const oldPinned = document.getElementById(currentPinnedId);
+        if (oldPinned) videoGrid.appendChild(oldPinned);
+    }
+
+    pinnedVideoContainer.appendChild(containerEl);
+    pinnedVideoContainer.classList.remove('hidden');
+    conferenceArea.classList.add('has-pinned');
+    currentPinnedId = containerId;
 };
 
-onConnectionStateChange = (state) => {
-    if (state === 'connected') {
-        addSystemMessage('Partner connected successfully!');
-    } else if (state === 'disconnected' || state === 'failed') {
-        addSystemMessage('Partner disconnected.');
-        remoteContainer.classList.add('waiting');
-        remoteWaitingText.style.display = 'block';
-        remoteLabel.style.display = 'none';
-        remoteVideo.srcObject = null;
-        if(peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
+// WebRTC Callback bindings
+onRemoteTrackAdd = (peerId, stream, peerUsername) => {
+    const existingContainer = document.getElementById(`remote-wrapper-${peerId}`);
+    if (existingContainer) {
+        // Just update stream
+        const vid = document.getElementById(`remote-video-${peerId}`);
+        if(vid && vid.srcObject !== stream) {
+            vid.srcObject = stream;
         }
+        if (peerUsername) {
+            const label = document.getElementById(`remote-label-${peerId}`);
+            if(label) label.textContent = peerUsername;
+        }
+        return;
+    }
+
+    // Create new UI element for this peer
+    const name = peerUsername || 'Participant';
+    const wrapperId = `remote-wrapper-${peerId}`;
+
+    const wrapperDiv = document.createElement('div');
+    wrapperDiv.className = 'video-card remote';
+    wrapperDiv.id = wrapperId;
+
+    const videoEl = document.createElement('video');
+    videoEl.id = `remote-video-${peerId}`;
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.srcObject = stream;
+
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'video-label';
+    labelDiv.id = `remote-label-${peerId}`;
+    labelDiv.textContent = name;
+
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'pin-btn';
+    pinBtn.textContent = '📌';
+    pinBtn.setAttribute('onclick', `togglePin('${wrapperId}')`);
+
+    wrapperDiv.appendChild(videoEl);
+    wrapperDiv.appendChild(labelDiv);
+    wrapperDiv.appendChild(pinBtn);
+
+    videoGrid.appendChild(wrapperDiv);
+    
+    addSystemMessage(`${name} joined.`);
+};
+
+onRemoteTrackRemove = (peerId) => {
+    removeRemoteVideo(peerId);
+};
+
+function removeRemoteVideo(peerId) {
+    const wrapperId = `remote-wrapper-${peerId}`;
+    const wrapperDiv = document.getElementById(wrapperId);
+    
+    if (wrapperDiv) {
+        if (currentPinnedId === wrapperId) {
+            // Unpin it first
+            window.togglePin(wrapperId); 
+        }
+        wrapperDiv.remove();
+    }
+}
+
+onConnectionStateChange = (peerId, state) => {
+    console.log(`Connection ${peerId} state changed to ${state}`);
+    if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        removeRemoteVideo(peerId);
+        leaveWebRTC(); // Trigger cleanup for this specific peer in webrtc
     }
 };
 
-onChatMessageReceived = (text) => {
-    addChatMessage('Partner', text, 'remote');
+onChatMessageReceived = (username, text) => {
+    addChatMessage(username || 'Participant', text, 'remote');
 };
 
 // Start getting media on load and check URL
 window.onload = async () => {
-    await initMedia();
+    await initMediaPreview();
     
     // Check if room is in URL
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
     if (roomFromUrl) {
-        roomIdInput.value = roomFromUrl;
-        addSystemMessage('Room link detected. Click "Join Existing Room" to enter.');
+        joinRoomIdInput.value = roomFromUrl;
+        joinRoomIdInput.disabled = true; // Lock it since they came from invite
     }
 };

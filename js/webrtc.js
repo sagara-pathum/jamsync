@@ -21,190 +21,238 @@ const configuration = {
     ]
 };
 
-let peerConnection;
-let localStream;
-let remoteStream;
-let dataChannel;
-let pendingCandidates = [];
+// Maps of connections and channels for multiple peers
+const peerConnections = {}; 
+const dataChannels = {};
+const pendingCandidates = {}; 
+const remoteStreams = {};
 
-// Callbacks
+let localStream;
+let myPeerId = '';
+let myUsername = '';
+let currentRoom = '';
+
+// Callbacks required by main.js
 let onRemoteTrackAdd;
+let onRemoteTrackRemove;
 let onConnectionStateChange;
 let onChatMessageReceived;
 
-// isInitiator is set once at join time (true = room creator, false = joiner)
-// This prevents the "glare" race condition where both peers try to become initiator
-let _isInitiator = false;
-let _roomId = '';
-
-function initWebRTC(isInitiator, roomId) {
-    _isInitiator = isInitiator;
-    _roomId = roomId;
+function initWebRTC(peerId, username, roomId) {
+    myPeerId = peerId;
+    myUsername = username;
+    currentRoom = roomId;
 }
 
-function createPeerConnection() {
-    if (peerConnection) {
-        peerConnection.close();
+// Create a connection specifically for one remote peer
+function createPeerConnection(targetPeerId) {
+    if (peerConnections[targetPeerId]) {
+        peerConnections[targetPeerId].close();
     }
-    peerConnection = new RTCPeerConnection(configuration);
-    pendingCandidates = [];
-    remoteStream = null;
+    
+    const pc = new RTCPeerConnection(configuration);
+    peerConnections[targetPeerId] = pc;
+    pendingCandidates[targetPeerId] = [];
 
-    if (_isInitiator) {
-        dataChannel = peerConnection.createDataChannel('jam-chat');
-        setupDataChannel(dataChannel);
-    } else {
-        peerConnection.ondatachannel = (event) => {
-            dataChannel = event.channel;
-            setupDataChannel(dataChannel);
-        };
-    }
-
-    peerConnection.onicecandidate = (event) => {
+    // ICE Candidate handling per connection
+    pc.onicecandidate = (event) => {
         if (event.candidate) {
             sendSignalingMessage({
                 type: 'candidate',
                 candidate: event.candidate,
-                room: _roomId
+                source: myPeerId,
+                target: targetPeerId,
+                room: currentRoom
             });
         }
     };
 
-    peerConnection.onicegatheringstatechange = () => {
-        console.log("ICE gathering state:", peerConnection.iceGatheringState);
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log("ICE connection state:", peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'failed') {
-            console.warn("ICE failed, attempting restart...");
-            peerConnection.restartIce();
-        }
-    };
-
-    peerConnection.onconnectionstatechange = () => {
-        console.log("Connection state:", peerConnection.connectionState);
+    pc.onconnectionstatechange = () => {
+        console.log(`Connection state with ${targetPeerId}:`, pc.connectionState);
         if (onConnectionStateChange) {
-            onConnectionStateChange(peerConnection.connectionState);
+            onConnectionStateChange(targetPeerId, pc.connectionState);
         }
     };
 
-    peerConnection.ontrack = (event) => {
-        if (!remoteStream) {
-            remoteStream = new MediaStream();
-            if (onRemoteTrackAdd) {
-                onRemoteTrackAdd(remoteStream);
-            }
+    pc.ontrack = (event) => {
+        if (!remoteStreams[targetPeerId]) {
+            remoteStreams[targetPeerId] = new MediaStream();
         }
-        remoteStream.addTrack(event.track);
+        remoteStreams[targetPeerId].addTrack(event.track);
+        // Track callback handled differently now, we let signaling messages pass usernames too,
+        // but stream will be bound in UI
+        if (onRemoteTrackAdd && event.track.kind === 'video') {
+            onRemoteTrackAdd(targetPeerId, remoteStreams[targetPeerId]);
+        }
     };
 
+    // Add our local tracks to this new connection
     if (localStream) {
         localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
+            pc.addTrack(track, localStream);
         });
     }
+
+    // Create datachannel if initiator (i.e. we are the one sending offer)
+    return pc;
 }
 
-async function startCall() {
-    // Only the room creator (initiator) creates the offer
-    if (!_isInitiator) return;
-    createPeerConnection();
+async function startCallWithPeer(targetPeerId) {
+    const pc = createPeerConnection(targetPeerId);
+    
+    // Create datachannel
+    const channel = pc.createDataChannel('chat');
+    setupDataChannel(targetPeerId, channel);
+
     try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         sendSignalingMessage({
             type: 'offer',
-            offer: peerConnection.localDescription,
-            room: _roomId
+            offer: pc.localDescription,
+            source: myPeerId,
+            target: targetPeerId,
+            username: myUsername, // send username for UI
+            room: currentRoom
         });
-        console.log("Offer sent.");
     } catch (err) {
         console.error("Error creating offer:", err);
     }
 }
 
-async function processPendingCandidates() {
-    for (const candidate of pendingCandidates) {
+async function processPendingCandidates(targetPeerId) {
+    const pc = peerConnections[targetPeerId];
+    if (!pc) return;
+    const queued = pendingCandidates[targetPeerId] || [];
+    for (const candidate of queued) {
         try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
             console.error("Error adding pending candidate:", err);
         }
     }
-    pendingCandidates = [];
+    pendingCandidates[targetPeerId] = [];
 }
 
-async function handleSignalingMessage(message, roomId) {
-    if (message.type === 'ready') {
-        // The room creator sees this and starts the call
-        // The joiner also sends 'ready' so the creator knows to begin
-        if (_isInitiator) {
-            console.log("Joiner is ready, starting call as initiator...");
-            await startCall();
+async function handleSignalingMessage(message) {
+    const sourceId = message.source || message.peerId; // From peer
+    
+    if (message.type === 'join') {
+        // A new peer joined the room. They sent a join message to the whole room.
+        // If we are already here, we should initiate a call to them.
+        if (sourceId !== myPeerId) {
+            console.log(`Peer ${sourceId} joined. Initiating call...`);
+            await startCallWithPeer(sourceId);
         }
-        // If we are NOT the initiator, we wait for the offer
     } else if (message.type === 'offer') {
-        // Only the joiner (non-initiator) should receive and handle an offer
-        if (!peerConnection) {
-            createPeerConnection();
-        }
+        const pc = createPeerConnection(sourceId);
+        
+        // Setup data channel receiver
+        pc.ondatachannel = (event) => {
+            setupDataChannel(sourceId, event.channel);
+        };
+
         try {
-            console.log("Received offer, creating answer...");
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
-            await processPendingCandidates();
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
+            await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+            await processPendingCandidates(sourceId);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            // Tell UI about this peer's name if not known
+            if (onRemoteTrackAdd && remoteStreams[sourceId]) {
+                onRemoteTrackAdd(sourceId, remoteStreams[sourceId], message.username);
+            }
+
             sendSignalingMessage({
                 type: 'answer',
-                answer: peerConnection.localDescription,
-                room: roomId
+                answer: pc.localDescription,
+                source: myPeerId,
+                target: sourceId,
+                username: myUsername,
+                room: currentRoom
             });
-            console.log("Answer sent.");
         } catch (err) {
             console.error("Error handling offer:", err);
         }
-    } else if (message.type === 'answer' && peerConnection) {
-        try {
-            console.log("Received answer...");
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
-            await processPendingCandidates();
-        } catch (err) {
-            console.error("Error handling answer:", err);
-        }
-    } else if (message.type === 'candidate' && peerConnection) {
-        try {
-            if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
-            } else {
-                pendingCandidates.push(message.candidate);
+    } else if (message.type === 'answer') {
+        const pc = peerConnections[sourceId];
+        if (pc) {
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+                await processPendingCandidates(sourceId);
+                
+                // Track username sent back
+                if (onRemoteTrackAdd && remoteStreams[sourceId]) {
+                    onRemoteTrackAdd(sourceId, remoteStreams[sourceId], message.username);
+                }
+            } catch (err) {
+                console.error("Error handling answer:", err);
             }
-        } catch (err) {
-            console.error("Error handling candidate:", err);
+        }
+    } else if (message.type === 'candidate') {
+        const pc = peerConnections[sourceId];
+        if (pc) {
+            try {
+                if (pc.remoteDescription && pc.remoteDescription.type) {
+                    await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+                } else {
+                    pendingCandidates[sourceId].push(message.candidate);
+                }
+            } catch (err) {
+                console.error("Error handling candidate:", err);
+            }
+        } else {
+            // We might receive candidate before offer
+            if (!pendingCandidates[sourceId]) pendingCandidates[sourceId] = [];
+            pendingCandidates[sourceId].push(message.candidate);
+        }
+    } else if (message.type === 'leave') {
+        closePeerConnection(sourceId);
+        if (onRemoteTrackRemove) {
+            onRemoteTrackRemove(sourceId);
         }
     }
 }
 
-function setupDataChannel(channel) {
-    channel.onopen = () => {
-        console.log("Data channel is open");
-    };
+function closePeerConnection(peerId) {
+    if (peerConnections[peerId]) {
+        peerConnections[peerId].close();
+        delete peerConnections[peerId];
+    }
+    if (dataChannels[peerId]) {
+        dataChannels[peerId].close();
+        delete dataChannels[peerId];
+    }
+    delete remoteStreams[peerId];
+    delete pendingCandidates[peerId];
+}
+
+function setupDataChannel(peerId, channel) {
+    dataChannels[peerId] = channel;
     channel.onmessage = (event) => {
-        if (onChatMessageReceived) {
-            onChatMessageReceived(event.data);
+        try {
+            const data = JSON.parse(event.data);
+            if (onChatMessageReceived) {
+                onChatMessageReceived(data.username, data.text);
+            }
+        } catch (e) {
+            console.error("Malformed chat message", e);
         }
-    };
-    channel.onerror = (error) => {
-        console.error("Data channel error:", error);
     };
 }
 
+// Broadcast to all peers
 function sendChatMessage(text) {
-    if (dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(text);
-        return true;
+    const payload = JSON.stringify({ username: myUsername, text: text });
+    let sentCount = 0;
+    for (const peerId in dataChannels) {
+        const channel = dataChannels[peerId];
+        if (channel && channel.readyState === 'open') {
+            channel.send(payload);
+            sentCount++;
+        }
     }
-    return false;
+    return sentCount > 0; // Return true if sent to at least 1 person
 }
 
 function toggleAudio(enabled) {
@@ -223,13 +271,14 @@ function toggleVideo(enabled) {
     }
 }
 
-// Ensure cleanup on page unload
-window.addEventListener('beforeunload', () => {
-    if (peerConnection) {
-        peerConnection.close();
+function leaveWebRTC() {
+    for (const peerId in peerConnections) {
+        closePeerConnection(peerId);
     }
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        sendSignalingMessage({ type: 'leave', room: window.currentRoom });
-        socket.close();
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
     }
-});
+    sendSignalingMessage({ type: 'leave', room: currentRoom, peerId: myPeerId });
+}
+
+window.addEventListener('beforeunload', leaveWebRTC);

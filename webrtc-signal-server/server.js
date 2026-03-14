@@ -7,6 +7,8 @@ const rooms = {};
 
 wss.on("connection", ws => {
   ws._room = null;
+  ws._peerId = null;
+  ws._username = null;
 
   ws.on("message", message => {
     let data;
@@ -18,6 +20,12 @@ wss.on("connection", ws => {
 
     const roomId = data.room;
     if (!roomId) return;
+
+    // Track room joining and metadata
+    if (data.type === 'join') {
+      ws._peerId = data.peerId;
+      ws._username = data.username;
+    }
 
     // Always track which room this socket is in
     if (ws._room !== roomId) {
@@ -31,9 +39,18 @@ wss.on("connection", ws => {
       rooms[roomId].add(ws);
     }
 
-    // Relay message only to OTHER clients in the SAME room
     const roomClients = rooms[roomId];
-    if (roomClients) {
+    if (!roomClients) return;
+
+    // If message has a specific target, only route to that peer
+    if (data.target) {
+      roomClients.forEach(client => {
+        if (client._peerId === data.target && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(data));
+        }
+      });
+    } else {
+      // Otherwise broadcast to all OTHER clients in the room (e.g. for 'join' messages and chat broadcasts if needed)
       roomClients.forEach(client => {
         if (client !== ws && client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify(data));
@@ -49,7 +66,11 @@ wss.on("connection", ws => {
       // Notify remaining peers in the room that this peer left
       rooms[roomId].forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({ type: 'leave', room: roomId }));
+          client.send(JSON.stringify({ 
+            type: 'leave', 
+            peerId: ws._peerId,
+            room: roomId 
+          }));
         }
       });
       if (rooms[roomId].size === 0) delete rooms[roomId];
