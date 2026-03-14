@@ -1,14 +1,14 @@
 :root {
-    --bg-dark: #0f172a;
-    --bg-darker: #020617;
-    --bg-panel: #1e293b;
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
+    --bg-dark: #62825D;
+    --bg-darker: #526E48;
+    --bg-panel: #62825D;
+    --primary: #9EDF9C;
+    --primary-hover: #C2FFC7;
     --danger: #ef4444;
     --danger-hover: #dc2626;
     --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: #334155;
+    --text-muted: #C2FFC7;
+    --border: #9EDF9C;
     
     --success: #10b981;
     --offline: #64748b;
@@ -32,13 +32,14 @@ body {
 .app-container {
     display: flex;
     height: 100vh;
+    flex-direction: row-reverse;
 }
 
 /* Sidebar & Chat */
 .sidebar {
     width: 320px;
     background-color: var(--bg-panel);
-    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     z-index: 10;
@@ -55,10 +56,7 @@ body {
 .sidebar-header h2 {
     font-size: 1.5rem;
     font-weight: 700;
-    background: linear-gradient(135deg, #a855f7, #3b82f6);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--primary-hover);
 }
 
 .status-indicator {
@@ -122,7 +120,7 @@ input[type="text"]:focus {
 
 .btn.primary {
     background-color: var(--primary);
-    color: white;
+    color: var(--bg-darker);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -245,7 +243,7 @@ input[type="text"]:focus {
 .message.local {
     align-self: flex-end;
     background-color: var(--primary);
-    color: white;
+    color: var(--bg-darker);
     border-bottom-right-radius: 4px;
 }
 
@@ -400,7 +398,7 @@ input[type="text"]:focus {
     .sidebar {
         width: 100%;
         height: 50vh;
-        border-right: none;
+        border-left: none;
         border-bottom: 1px solid var(--border);
     }
     
