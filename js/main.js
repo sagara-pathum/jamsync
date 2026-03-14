@@ -10,7 +10,10 @@ const mainWorkspace = document.getElementById('main-workspace');
 const usernameInput = document.getElementById('username-input');
 const joinRoomIdInput = document.getElementById('join-room-id-input');
 const lobbyJoinBtn = document.getElementById('lobby-join-btn');
+const generateRoomBtn = document.getElementById('generate-room-btn');
 const previewVideo = document.getElementById('preview-video');
+const previewToggleAudioBtn = document.getElementById('preview-toggle-audio-btn');
+const previewToggleVideoBtn = document.getElementById('preview-toggle-video-btn');
 
 const localVideo = document.getElementById('local-video');
 const videoGrid = document.getElementById('video-grid');
@@ -55,7 +58,8 @@ function handleJoinConference() {
     }
 
     if (!requestedRoom) {
-        requestedRoom = generateId(); 
+        alert("Please enter a Room ID or click Create Room to generate one.");
+        return;
     }
 
     currentRoom = requestedRoom;
@@ -110,6 +114,56 @@ function handleJoinConference() {
 }
 
 lobbyJoinBtn.addEventListener('click', handleJoinConference);
+
+generateRoomBtn.addEventListener('click', () => {
+    // Generate a new ID and put it in the input field
+    joinRoomIdInput.value = generateId();
+});
+
+// Preview Controls
+previewToggleAudioBtn.addEventListener('click', () => {
+    isMuted = !isMuted;
+    toggleAudio(!isMuted);
+    
+    if (isMuted) {
+        previewToggleAudioBtn.innerHTML = '<span class="icon">🔇</span>';
+        previewToggleAudioBtn.classList.add('muted');
+    } else {
+        previewToggleAudioBtn.innerHTML = '<span class="icon">🎙️</span>';
+        previewToggleAudioBtn.classList.remove('muted');
+    }
+    
+    // Sync main toggle UI to match Lobby choice
+    if (isMuted) {
+        toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
+        toggleAudioBtn.classList.add('muted');
+    } else {
+        toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
+        toggleAudioBtn.classList.remove('muted');
+    }
+});
+
+previewToggleVideoBtn.addEventListener('click', () => {
+    isVideoOff = !isVideoOff;
+    toggleVideo(!isVideoOff);
+    
+    if (isVideoOff) {
+        previewToggleVideoBtn.innerHTML = '<span class="icon">🙈</span>';
+        previewToggleVideoBtn.classList.add('muted');
+    } else {
+        previewToggleVideoBtn.innerHTML = '<span class="icon">📹</span>';
+        previewToggleVideoBtn.classList.remove('muted');
+    }
+
+    // Sync main toggle UI to match Lobby choice
+    if (isVideoOff) {
+        toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
+        toggleVideoBtn.classList.add('muted');
+    } else {
+        toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
+        toggleVideoBtn.classList.remove('muted');
+    }
+});
 
 if (copyRoomBtn) {
     copyRoomBtn.addEventListener('click', () => {

@@ -18,11 +18,26 @@
                 <p>Join a multi-party video conference</p>
                 <div class="lobby-form">
                     <input type="text" id="username-input" placeholder="Your Name" />
-                    <input type="text" id="join-room-id-input" placeholder="Room ID (Leave blank to generate)" />
-                    <button id="lobby-join-btn" class="btn primary">Join Conference</button>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="join-room-id-input" placeholder="Room ID" style="flex: 1;" />
+                        <button id="generate-room-btn" class="btn secondary" type="button">Create Room</button>
+                    </div>
+
                     <div id="camera-preview-container" class="camera-preview">
                         <video id="preview-video" autoplay playsinline muted></video>
                     </div>
+                    
+                    <div class="preview-controls">
+                        <button id="preview-toggle-audio-btn" class="btn control-btn active" type="button">
+                            <span class="icon">🎙️</span>
+                        </button>
+                        <button id="preview-toggle-video-btn" class="btn control-btn active" type="button">
+                            <span class="icon">📹</span>
+                        </button>
+                    </div>
+
+                    <button id="lobby-join-btn" class="btn primary">Join Conference</button>
                 </div>
             </div>
         </div>

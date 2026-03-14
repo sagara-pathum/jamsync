@@ -104,6 +104,19 @@ body {
     transform: scaleX(-1);
 }
 
+.preview-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: -10px;
+    margin-bottom: 20px;
+}
+
+.preview-controls .control-btn {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+}
+
 /* Main Workspace */
 .workspace-container {
     display: flex;
@@ -170,6 +183,11 @@ input[type="text"] {
     font-family: inherit;
     outline: none;
     transition: border-color 0.2s;
+}
+
+input[type="text"]::placeholder {
+    color: var(--bg-darker);
+    opacity: 0.8;
 }
 
 input[type="text"]:focus {
