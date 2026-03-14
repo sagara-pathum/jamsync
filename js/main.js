@@ -113,57 +113,67 @@ function handleJoinConference() {
     });
 }
 
-lobbyJoinBtn.addEventListener('click', handleJoinConference);
+if (lobbyJoinBtn) lobbyJoinBtn.addEventListener('click', handleJoinConference);
 
-generateRoomBtn.addEventListener('click', () => {
-    // Generate a new ID and put it in the input field
-    joinRoomIdInput.value = generateId();
-});
+if (generateRoomBtn) {
+    generateRoomBtn.addEventListener('click', () => {
+        // Generate a new ID and put it in the input field
+        if (joinRoomIdInput) joinRoomIdInput.value = generateId();
+    });
+}
 
 // Preview Controls
-previewToggleAudioBtn.addEventListener('click', () => {
-    isMuted = !isMuted;
-    toggleAudio(!isMuted);
-    
-    if (isMuted) {
-        previewToggleAudioBtn.innerHTML = '<span class="icon">🔇</span>';
-        previewToggleAudioBtn.classList.add('muted');
-    } else {
-        previewToggleAudioBtn.innerHTML = '<span class="icon">🎙️</span>';
-        previewToggleAudioBtn.classList.remove('muted');
-    }
-    
-    // Sync main toggle UI to match Lobby choice
-    if (isMuted) {
-        toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
-        toggleAudioBtn.classList.add('muted');
-    } else {
-        toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
-        toggleAudioBtn.classList.remove('muted');
-    }
-});
+if (previewToggleAudioBtn) {
+    previewToggleAudioBtn.addEventListener('click', () => {
+        isMuted = !isMuted;
+        toggleAudio(!isMuted);
+        
+        if (isMuted) {
+            previewToggleAudioBtn.innerHTML = '<span class="icon">🔇</span>';
+            previewToggleAudioBtn.classList.add('muted');
+        } else {
+            previewToggleAudioBtn.innerHTML = '<span class="icon">🎙️</span>';
+            previewToggleAudioBtn.classList.remove('muted');
+        }
+        
+        // Sync main toggle UI to match Lobby choice
+        if (toggleAudioBtn) {
+            if (isMuted) {
+                toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
+                toggleAudioBtn.classList.add('muted');
+            } else {
+                toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
+                toggleAudioBtn.classList.remove('muted');
+            }
+        }
+    });
+}
 
-previewToggleVideoBtn.addEventListener('click', () => {
-    isVideoOff = !isVideoOff;
-    toggleVideo(!isVideoOff);
-    
-    if (isVideoOff) {
-        previewToggleVideoBtn.innerHTML = '<span class="icon">🙈</span>';
-        previewToggleVideoBtn.classList.add('muted');
-    } else {
-        previewToggleVideoBtn.innerHTML = '<span class="icon">📹</span>';
-        previewToggleVideoBtn.classList.remove('muted');
-    }
+if (previewToggleVideoBtn) {
+    previewToggleVideoBtn.addEventListener('click', () => {
+        isVideoOff = !isVideoOff;
+        toggleVideo(!isVideoOff);
+        
+        if (isVideoOff) {
+            previewToggleVideoBtn.innerHTML = '<span class="icon">🙈</span>';
+            previewToggleVideoBtn.classList.add('muted');
+        } else {
+            previewToggleVideoBtn.innerHTML = '<span class="icon">📹</span>';
+            previewToggleVideoBtn.classList.remove('muted');
+        }
 
-    // Sync main toggle UI to match Lobby choice
-    if (isVideoOff) {
-        toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
-        toggleVideoBtn.classList.add('muted');
-    } else {
-        toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
-        toggleVideoBtn.classList.remove('muted');
-    }
-});
+        // Sync main toggle UI to match Lobby choice
+        if (toggleVideoBtn) {
+            if (isVideoOff) {
+                toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
+                toggleVideoBtn.classList.add('muted');
+            } else {
+                toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
+                toggleVideoBtn.classList.remove('muted');
+            }
+        }
+    });
+}
 
 if (copyRoomBtn) {
     copyRoomBtn.addEventListener('click', () => {
