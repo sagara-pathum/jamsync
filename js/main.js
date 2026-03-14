@@ -1,16 +1,18 @@
+// Variables for local state
 let currentRoom = '';
 let myPeerId = '';
 let myName = '';
 let isMuted = false;
 let isVideoOff = false;
+let localStream = null;
 
 // DOM Elements
 const lobbyScreen = document.getElementById('lobby-screen');
 const mainWorkspace = document.getElementById('main-workspace');
 const usernameInput = document.getElementById('username-input');
 const joinRoomIdInput = document.getElementById('join-room-id-input');
-const lobbyJoinBtn = document.getElementById('lobby-join-btn');
 const generateRoomBtn = document.getElementById('generate-room-btn');
+const lobbyJoinBtn = document.getElementById('lobby-join-btn');
 const previewVideo = document.getElementById('preview-video');
 const previewToggleAudioBtn = document.getElementById('preview-toggle-audio-btn');
 const previewToggleVideoBtn = document.getElementById('preview-toggle-video-btn');
@@ -39,16 +41,23 @@ function generateId() {
 
 // Initialize local media stream for lobby preview
 async function initMediaPreview() {
+    console.log("Initializing media preview...");
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        previewVideo.srcObject = localStream;
+        console.log("Media stream acquired successfully.");
+        if (previewVideo) {
+            previewVideo.srcObject = localStream;
+            // Explicitly play to avoid black screen on some browsers
+            previewVideo.play().catch(e => console.log("Auto-play blocked or failed", e));
+        }
     } catch (err) {
         console.error("Error accessing media devices.", err);
-        alert('Failed to access camera/microphone. Please ensure permissions are granted.');
+        alert('Could not access camera/microphone. Please ensure you have given permission. Note: WebRTC requires a secure context (HTTPS) or localhost.');
     }
 }
 
 function handleJoinConference() {
+    console.log("Join Conference clicked.");
     myName = usernameInput.value.trim();
     let requestedRoom = joinRoomIdInput.value.trim();
 
@@ -58,7 +67,7 @@ function handleJoinConference() {
     }
 
     if (!requestedRoom) {
-        alert("Please enter a Room ID or click Create Room to generate one.");
+        alert("Please enter a Room ID or click 'Create Room' to generate one.");
         return;
     }
 
@@ -66,82 +75,101 @@ function handleJoinConference() {
     window.currentRoom = currentRoom;
     myPeerId = generateId();
 
+    console.log(`Joining Room: ${currentRoom} as ${myName} (${myPeerId})`);
+
     // Transition UI
-    lobbyScreen.classList.add('hidden');
-    mainWorkspace.classList.remove('hidden');
+    if (lobbyScreen) lobbyScreen.classList.add('hidden');
+    if (mainWorkspace) mainWorkspace.classList.remove('hidden');
 
     // Transfer stream to main view
-    localVideo.srcObject = localStream;
+    if (localVideo && localStream) {
+        localVideo.srcObject = localStream;
+    }
 
     // Room Info Setup
     const url = new URL(window.location.href);
     url.searchParams.set('room', currentRoom);
-    displayRoomId.value = url.toString();
+    if (displayRoomId) displayRoomId.value = url.toString();
 
-    // Init WebRTC vars
-    initWebRTC(myPeerId, myName, currentRoom);
+    // Init WebRTC vars (from webrtc.js)
+    if (typeof initWebRTC === 'function') {
+        initWebRTC(myPeerId, myName, currentRoom);
+    }
 
-    // Connect Signaling
-    connectSignalingServer((msg) => {
-        if(msg.room !== currentRoom) return;
-        
-        handleSignalingMessage(msg);
+    // Connect Signaling (from signaling.js)
+    if (typeof connectSignalingServer === 'function') {
+        connectSignalingServer((msg) => {
+            if(msg.room !== currentRoom) return;
+            
+            if (typeof handleSignalingMessage === 'function') {
+                handleSignalingMessage(msg);
+            }
 
-        if (msg.type === 'leave') {
-            const leaveSourceId = msg.source || msg.peerId;
-            removeRemoteVideo(leaveSourceId);
-            addSystemMessage(`Someone left the conference.`);
-        }
-    }, () => {
-        // Connected to Signaling
-        connectionDot.classList.remove('offline');
-        connectionDot.classList.add('online');
-        connectionStatus.textContent = 'Connected';
+            if (msg.type === 'leave') {
+                const leaveSourceId = msg.source || msg.peerId;
+                removeRemoteVideo(leaveSourceId);
+                addSystemMessage(`Someone left the conference.`);
+            }
+        }, () => {
+            // Connected to Signaling
+            if (connectionDot) {
+                connectionDot.classList.remove('offline');
+                connectionDot.classList.add('online');
+            }
+            if (connectionStatus) connectionStatus.textContent = 'Connected';
 
-        chatInput.disabled = false;
-        sendBtn.disabled = false;
+            if (chatInput) chatInput.disabled = false;
+            if (sendBtn) sendBtn.disabled = false;
 
-        addSystemMessage(`Joined room: ${currentRoom}`);
-        
-        // Announce existence to others in the room
-        sendSignalingMessage({ 
-            type: 'join', 
-            peerId: myPeerId, 
-            username: myName, 
-            room: currentRoom 
+            addSystemMessage(`Joined room: ${currentRoom}`);
+            
+            // Announce existence to others in the room
+            if (typeof sendSignalingMessage === 'function') {
+                sendSignalingMessage({ 
+                    type: 'join', 
+                    peerId: myPeerId, 
+                    username: myName, 
+                    room: currentRoom 
+                });
+            }
         });
-    });
+    }
 }
 
-if (lobbyJoinBtn) lobbyJoinBtn.addEventListener('click', handleJoinConference);
-
+// Event Listeners for Lobby
 if (generateRoomBtn) {
     generateRoomBtn.addEventListener('click', () => {
-        // Generate a new ID and put it in the input field
-        if (joinRoomIdInput) joinRoomIdInput.value = generateId();
+        console.log("Generate Room clicked.");
+        const newId = generateId();
+        if (joinRoomIdInput) {
+            joinRoomIdInput.value = newId;
+            console.log("New Room ID generated:", newId);
+        }
     });
 }
 
-// Preview Controls
+if (lobbyJoinBtn) {
+    lobbyJoinBtn.addEventListener('click', handleJoinConference);
+}
+
+// Lobby Preview Controls
 if (previewToggleAudioBtn) {
     previewToggleAudioBtn.addEventListener('click', () => {
+        console.log("Lobby Audio Toggle clicked.");
         isMuted = !isMuted;
-        toggleAudio(!isMuted);
+        if (typeof toggleAudio === 'function') toggleAudio(!isMuted);
         
         if (isMuted) {
             previewToggleAudioBtn.innerHTML = '<span class="icon">🔇</span>';
             previewToggleAudioBtn.classList.add('muted');
+            if (toggleAudioBtn) {
+                toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
+                toggleAudioBtn.classList.add('muted');
+            }
         } else {
             previewToggleAudioBtn.innerHTML = '<span class="icon">🎙️</span>';
             previewToggleAudioBtn.classList.remove('muted');
-        }
-        
-        // Sync main toggle UI to match Lobby choice
-        if (toggleAudioBtn) {
-            if (isMuted) {
-                toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
-                toggleAudioBtn.classList.add('muted');
-            } else {
+            if (toggleAudioBtn) {
                 toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
                 toggleAudioBtn.classList.remove('muted');
             }
@@ -151,23 +179,21 @@ if (previewToggleAudioBtn) {
 
 if (previewToggleVideoBtn) {
     previewToggleVideoBtn.addEventListener('click', () => {
+        console.log("Lobby Video Toggle clicked.");
         isVideoOff = !isVideoOff;
-        toggleVideo(!isVideoOff);
+        if (typeof toggleVideo === 'function') toggleVideo(!isVideoOff);
         
         if (isVideoOff) {
             previewToggleVideoBtn.innerHTML = '<span class="icon">🙈</span>';
             previewToggleVideoBtn.classList.add('muted');
+            if (toggleVideoBtn) {
+                toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
+                toggleVideoBtn.classList.add('muted');
+            }
         } else {
             previewToggleVideoBtn.innerHTML = '<span class="icon">📹</span>';
             previewToggleVideoBtn.classList.remove('muted');
-        }
-
-        // Sync main toggle UI to match Lobby choice
-        if (toggleVideoBtn) {
-            if (isVideoOff) {
-                toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
-                toggleVideoBtn.classList.add('muted');
-            } else {
+            if (toggleVideoBtn) {
                 toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
                 toggleVideoBtn.classList.remove('muted');
             }
@@ -175,8 +201,57 @@ if (previewToggleVideoBtn) {
     });
 }
 
+// Main Video Controls
+if (toggleAudioBtn) {
+    toggleAudioBtn.addEventListener('click', () => {
+        isMuted = !isMuted;
+        if (typeof toggleAudio === 'function') toggleAudio(!isMuted);
+        
+        if (isMuted) {
+            toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
+            toggleAudioBtn.classList.add('muted');
+            if (previewToggleAudioBtn) {
+                previewToggleAudioBtn.innerHTML = '<span class="icon">🔇</span>';
+                previewToggleAudioBtn.classList.add('muted');
+            }
+        } else {
+            toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
+            toggleAudioBtn.classList.remove('muted');
+            if (previewToggleAudioBtn) {
+                previewToggleAudioBtn.innerHTML = '<span class="icon">🎙️</span>';
+                previewToggleAudioBtn.classList.remove('muted');
+            }
+        }
+    });
+}
+
+if (toggleVideoBtn) {
+    toggleVideoBtn.addEventListener('click', () => {
+        isVideoOff = !isVideoOff;
+        if (typeof toggleVideo === 'function') toggleVideo(!isVideoOff);
+        
+        if (isVideoOff) {
+            toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
+            toggleVideoBtn.classList.add('muted');
+            if (previewToggleVideoBtn) {
+                previewToggleVideoBtn.innerHTML = '<span class="icon">🙈</span>';
+                previewToggleVideoBtn.classList.add('muted');
+            }
+        } else {
+            toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
+            toggleVideoBtn.classList.remove('muted');
+            if (previewToggleVideoBtn) {
+                previewToggleVideoBtn.innerHTML = '<span class="icon">📹</span>';
+                previewToggleVideoBtn.classList.remove('muted');
+            }
+        }
+    });
+}
+
+// Room Copy Button
 if (copyRoomBtn) {
     copyRoomBtn.addEventListener('click', () => {
+        if (!displayRoomId) return;
         displayRoomId.select();
         navigator.clipboard.writeText(displayRoomId.value).then(() => {
             const originalHTML = copyRoomBtn.innerHTML;
@@ -184,59 +259,39 @@ if (copyRoomBtn) {
             setTimeout(() => {
                 copyRoomBtn.innerHTML = originalHTML;
             }, 2000);
-        }).catch(err => {
-            console.error('Could not copy text: ', err);
-        });
+        }).catch(err => console.error('Could not copy', err));
     });
 }
 
-leaveRoomBtn.addEventListener('click', () => {
-    window.location.href = window.location.pathname; // strip URL params and restart
-});
+// Leave Room
+if (leaveRoomBtn) {
+    leaveRoomBtn.addEventListener('click', () => {
+        window.location.href = window.location.pathname;
+    });
+}
 
-// Control Buttons
-toggleAudioBtn.addEventListener('click', () => {
-    isMuted = !isMuted;
-    toggleAudio(!isMuted);
-    
-    if (isMuted) {
-        toggleAudioBtn.innerHTML = '<span class="icon">🔇</span> Unmute';
-        toggleAudioBtn.classList.add('muted');
-    } else {
-        toggleAudioBtn.innerHTML = '<span class="icon">🎙️</span> Mute';
-        toggleAudioBtn.classList.remove('muted');
-    }
-});
-
-toggleVideoBtn.addEventListener('click', () => {
-    isVideoOff = !isVideoOff;
-    toggleVideo(!isVideoOff);
-    
-    if (isVideoOff) {
-        toggleVideoBtn.innerHTML = '<span class="icon">🙈</span> Video On';
-        toggleVideoBtn.classList.add('muted');
-    } else {
-        toggleVideoBtn.innerHTML = '<span class="icon">📹</span> Video Off';
-        toggleVideoBtn.classList.remove('muted');
-    }
-});
-
-// Chat Output Management
+// Chat Functionality
 function sendChat() {
+    if (!chatInput) return;
     const text = chatInput.value.trim();
     if (text) {
-        const sent = sendChatMessage(text);
-        addChatMessage('You', text, 'local');
-        chatInput.value = '';
+        if (typeof sendChatMessage === 'function') {
+            sendChatMessage(text);
+            addChatMessage('You', text, 'local');
+            chatInput.value = '';
+        }
     }
 }
 
-sendBtn.addEventListener('click', sendChat);
-chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendChat();
-});
+if (sendBtn) sendBtn.addEventListener('click', sendChat);
+if (chatInput) {
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendChat();
+    });
+}
 
 function addChatMessage(sender, text, type) {
+    if (!chatMessages) return;
     const div = document.createElement('div');
     div.classList.add('message', type);
     
@@ -267,11 +322,10 @@ function addSystemMessage(text) {
 let currentPinnedId = null;
 window.togglePin = function(containerId) {
     const containerEl = document.getElementById(containerId);
-    if (!containerEl) return;
+    if (!containerEl || !videoGrid || !pinnedVideoContainer || !conferenceArea) return;
 
-    // Unpin if currently pinned
     if (currentPinnedId === containerId) {
-        videoGrid.appendChild(containerEl); // move back to grid
+        videoGrid.appendChild(containerEl);
         pinnedVideoContainer.innerHTML = '';
         pinnedVideoContainer.classList.add('hidden');
         conferenceArea.classList.remove('has-pinned');
@@ -279,8 +333,6 @@ window.togglePin = function(containerId) {
         return;
     }
 
-    // Pin new
-    // If something was already pinned, move it back
     if (currentPinnedId) {
         const oldPinned = document.getElementById(currentPinnedId);
         if (oldPinned) videoGrid.appendChild(oldPinned);
@@ -296,7 +348,6 @@ window.togglePin = function(containerId) {
 onRemoteTrackAdd = (peerId, stream, peerUsername) => {
     const existingContainer = document.getElementById(`remote-wrapper-${peerId}`);
     if (existingContainer) {
-        // Just update stream
         const vid = document.getElementById(`remote-video-${peerId}`);
         if(vid && vid.srcObject !== stream) {
             vid.srcObject = stream;
@@ -308,7 +359,6 @@ onRemoteTrackAdd = (peerId, stream, peerUsername) => {
         return;
     }
 
-    // Create new UI element for this peer
     const name = peerUsername || 'Participant';
     const wrapperId = `remote-wrapper-${peerId}`;
 
@@ -336,8 +386,7 @@ onRemoteTrackAdd = (peerId, stream, peerUsername) => {
     wrapperDiv.appendChild(labelDiv);
     wrapperDiv.appendChild(pinBtn);
 
-    videoGrid.appendChild(wrapperDiv);
-    
+    if (videoGrid) videoGrid.appendChild(wrapperDiv);
     addSystemMessage(`${name} joined.`);
 };
 
@@ -351,7 +400,6 @@ function removeRemoteVideo(peerId) {
     
     if (wrapperDiv) {
         if (currentPinnedId === wrapperId) {
-            // Unpin it first
             window.togglePin(wrapperId); 
         }
         wrapperDiv.remove();
@@ -359,10 +407,9 @@ function removeRemoteVideo(peerId) {
 }
 
 onConnectionStateChange = (peerId, state) => {
-    console.log(`Connection ${peerId} state changed to ${state}`);
+    console.log(`Connection ${peerId} state: ${state}`);
     if (state === 'disconnected' || state === 'failed' || state === 'closed') {
         removeRemoteVideo(peerId);
-        leaveWebRTC(); // Trigger cleanup for this specific peer in webrtc
     }
 };
 
@@ -370,15 +417,19 @@ onChatMessageReceived = (username, text) => {
     addChatMessage(username || 'Participant', text, 'remote');
 };
 
-// Start getting media on load and check URL
-window.onload = async () => {
-    await initMediaPreview();
+// Initialization on load
+window.addEventListener('load', async () => {
+    console.log("Page loaded. Initializing...");
     
     // Check if room is in URL
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
-    if (roomFromUrl) {
+    if (roomFromUrl && joinRoomIdInput) {
         joinRoomIdInput.value = roomFromUrl;
-        joinRoomIdInput.disabled = true; // Lock it since they came from invite
+        joinRoomIdInput.disabled = true;
     }
-};
+
+    // Start media preview
+    await initMediaPreview();
+});
+

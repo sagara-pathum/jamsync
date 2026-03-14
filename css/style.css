@@ -107,16 +107,28 @@ body {
 .preview-controls {
     display: flex;
     justify-content: flex-start;
-    gap: 15px;
-    margin-top: -5px;
+    gap: 12px;
+    margin-top: 10px;
     margin-bottom: 20px;
     width: 100%;
 }
 
 .preview-controls .control-btn {
-    padding: 10px 20px;
-    font-size: 1.1rem;
-    border-radius: 30px;
+    width: 50px;
+    height: 50px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border);
+}
+
+.preview-controls .control-btn.muted {
+    background-color: rgba(239, 68, 68, 0.4);
+    border-color: var(--danger);
 }
 
 /* Main Workspace */
@@ -181,21 +193,22 @@ input[type="text"] {
     border-radius: var(--radius);
     border: 1px solid var(--border);
     background-color: var(--bg-dark);
-    color: var(--text-main);
+    color: #ffffff; /* Explicitly white text */
     font-family: inherit;
     outline: none;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
 }
 
-/* Ensure lobby inputs have readable text and contrast */
-.lobby-form input[type="text"] {
-    background-color: rgba(0, 0, 0, 0.2);
-    color: #ffffff;
+/* Ensure lobby inputs are very clear */
+.lobby-form input {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff !important;
+    font-weight: 500;
 }
 
-input[type="text"]::placeholder {
-    color: #ffffff;
-    opacity: 0.6;
+.lobby-form input::placeholder {
+    color: #ffffff !important;
+    opacity: 0.7 !important;
 }
 
 input[type="text"]:focus {
