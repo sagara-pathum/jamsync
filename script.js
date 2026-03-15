@@ -1,5 +1,4 @@
-
-const socketUrl = "https://webrtc-signal-server-yd16.onrender.com:3001"; // Update with your backend URL
+const socketUrl = "https://webrtc-signal-server-yd16.onrender.com:3001"; // Update with your backend URL if running locally (e.g., ws://localhost:3001)
 let socket;
 let localStream;
 let roomId;
@@ -50,6 +49,7 @@ async function joinRoom() {
         setupLocalVideo();
     } catch (err) {
         console.error("Error accessing media devices.", err);
+        alert("Could not access camera/microphone. Please ensure you have given permission.");
     }
 
     // Connect to Signaling Server
@@ -97,8 +97,9 @@ function connectToSocket() {
         const { type, from, peerId, offer, answer, candidate, room, text, color, username: senderName } = data;
 
         if (type === 'peer-joined') {
-            // New peer joined, create an offer
-            createPeerConnection(peerId, senderName, color, true);
+            // New peer joined, existing peers just wait for their offer
+            console.log("Peer joined:", senderName);
+            createPeerConnection(peerId, senderName, color, false);
         } else if (type === 'offer') {
             await handleOffer(from, offer, senderName, color);
         } else if (type === 'answer') {
@@ -112,11 +113,20 @@ function connectToSocket() {
         } else if (type === 'leave') {
             removeParticipant(peerId);
         } else if (type === 'existing-peers') {
-            // Received list of existing peers in the room
+            // I just joined, I will send offers to everyone already in the room
+            console.log("Existing peers in room:", data.peers);
             data.peers.forEach(peer => {
                 createPeerConnection(peer.id, peer.username, peer.color, true);
             });
         }
+    };
+
+    socket.onclose = () => {
+        console.log("Disconnected from signaling server");
+    };
+
+    socket.onerror = (error) => {
+        console.error("WebSocket Error:", error);
     };
 }
 
@@ -127,6 +137,12 @@ function sendSignal(data) {
 }
 
 function createPeerConnection(peerId, peerUsername, peerColor, isInitiator) {
+    // If connection already exists, don't recreate it
+    if (peerConnections[peerId]) {
+        console.log("Peer connection already exists for:", peerId);
+        return peerConnections[peerId];
+    }
+
     const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
@@ -144,15 +160,30 @@ function createPeerConnection(peerId, peerUsername, peerColor, isInitiator) {
     };
 
     pc.ontrack = (event) => {
+        console.log("Received track from:", peerUsername, event.track.kind);
         if (!remoteStreams[peerId]) {
             remoteStreams[peerId] = new MediaStream();
             addParticipantThumbnail(peerId, peerUsername, peerColor, remoteStreams[peerId]);
         }
         remoteStreams[peerId].addTrack(event.track);
+        
+        // Ensure UI updates when video track is added
+        if (event.track.kind === 'video') {
+            updateRemoteMediaUI(peerId, event.track.enabled);
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        console.log(`Connection state with ${peerUsername}: ${pc.connectionState}`);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            removeParticipant(peerId);
+        }
     };
 
     if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
+        });
     }
 
     if (isInitiator) {
@@ -173,32 +204,50 @@ function createPeerConnection(peerId, peerUsername, peerColor, isInitiator) {
 }
 
 async function handleOffer(peerId, offer, peerUsername, peerColor) {
+    console.log("Handling offer from:", peerUsername);
     const pc = createPeerConnection(peerId, peerUsername, peerColor, false);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    sendSignal({
-        type: 'answer',
-        target: peerId,
-        answer: pc.localDescription
-    });
+    
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({
+            type: 'answer',
+            target: peerId,
+            answer: pc.localDescription
+        });
+    } catch (err) {
+        console.error("Error handling offer:", err);
+    }
 }
 
 async function handleAnswer(peerId, answer) {
+    console.log("Handling answer from peer:", peerId);
     const pc = peerConnections[peerId];
     if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (err) {
+            console.error("Error setting remote description from answer:", err);
+        }
     }
 }
 
 async function handleIceCandidate(peerId, candidate) {
     const pc = peerConnections[peerId];
-    if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    if (pc && candidate) {
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+            console.error("Error adding ICE candidate:", err);
+        }
     }
 }
 
 function addParticipantThumbnail(peerId, peerUsername, peerColor, stream) {
+    // Avoid duplicate thumbnails
+    if (document.getElementById(`thumb-${peerId}`)) return;
+
     const row = document.getElementById('participant-row');
     
     const thumb = document.createElement('div');
@@ -215,21 +264,28 @@ function addParticipantThumbnail(peerId, peerUsername, peerColor, stream) {
     const video = thumb.querySelector('video');
     video.srcObject = stream;
     
-    // Check if video tracks are enabled (they might not be initially)
-    // We might need signaling for cam status too, but for now simple check
-    video.addEventListener('loadedmetadata', () => {
-        if (stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled) {
+    // Update placeholder visibility based on tracks
+    const updateVisibility = () => {
+        const hasVideo = stream.getVideoTracks().some(t => t.enabled);
+        if (hasVideo) {
             thumb.querySelector('.placeholder').classList.add('hidden');
+            video.classList.remove('hidden');
         } else {
+            thumb.querySelector('.placeholder').classList.remove('hidden');
             video.classList.add('hidden');
         }
-    });
+    };
+
+    video.onloadedmetadata = updateVisibility;
+    stream.onaddtrack = updateVisibility;
+    stream.onremovetrack = updateVisibility;
 
     thumb.addEventListener('click', () => {
         switchStage(peerId, peerUsername, peerColor, stream);
     });
 
     row.appendChild(thumb);
+    updateVisibility(); // Initial check
 }
 
 function switchStage(peerId, peerUsername, peerColor, stream) {
@@ -243,14 +299,18 @@ function switchStage(peerId, peerUsername, peerColor, stream) {
     initials.innerText = peerUsername.charAt(0).toUpperCase();
     label.innerText = peerUsername;
 
-    // Toggle visibility based on track status
-    if (stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled) {
-        mainVideo.classList.remove('hidden');
-        placeholder.classList.add('hidden');
-    } else {
-        mainVideo.classList.add('hidden');
-        placeholder.classList.remove('hidden');
-    }
+    const updateMainVisibility = () => {
+        const hasVideo = stream.getVideoTracks().some(t => t.enabled);
+        if (hasVideo) {
+            mainVideo.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+        } else {
+            mainVideo.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+        }
+    };
+
+    updateMainVisibility();
 }
 
 function removeParticipant(peerId) {
@@ -265,7 +325,10 @@ function removeParticipant(peerId) {
 }
 
 function toggleCamera() {
+    if (!localStream) return;
     const videoTrack = localStream.getVideoTracks()[0];
+    if (!videoTrack) return;
+
     videoTrack.enabled = !videoTrack.enabled;
     
     toggleCamBtn.innerText = videoTrack.enabled ? "Cam On" : "Cam Off";
@@ -283,7 +346,10 @@ function toggleCamera() {
         placeholder.classList.remove('hidden');
     }
 
-    // We should notify other peers about camera status change
+    // Update local thumbnail
+    updateRemoteMediaUI('local-user', videoTrack.enabled);
+
+    // Notify other peers about camera status change
     sendSignal({
         type: 'cam-status',
         enabled: videoTrack.enabled
@@ -291,7 +357,10 @@ function toggleCamera() {
 }
 
 function toggleMic() {
+    if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
     audioTrack.enabled = !audioTrack.enabled;
     
     toggleMicBtn.innerText = audioTrack.enabled ? "Mic On" : "Mic Off";
@@ -328,7 +397,7 @@ function updateRemoteMediaUI(peerId, enabled) {
 
     // Also update main stage if this peer is on it
     const mainVideo = document.getElementById('main-video');
-    if (mainVideo.srcObject === remoteStreams[peerId]) {
+    if (mainVideo && mainVideo.srcObject === remoteStreams[peerId]) {
         const placeholder = document.getElementById('main-placeholder');
         if (enabled) {
             mainVideo.classList.remove('hidden');
