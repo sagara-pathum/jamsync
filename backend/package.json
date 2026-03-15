@@ -1,0 +1,12 @@
+{
+  "name": "jamsync-backend",
+  "version": "1.0.0",
+  "description": "WebRTC Signaling Server for JamSync",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

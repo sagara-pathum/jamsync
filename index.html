@@ -3,119 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RTCnet</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>WebRTC Meeting Platform</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Lobby Area -->
-        <div id="lobby-screen" class="lobby-container">
-            <div class="lobby-card">
-                <h2>Welcome to RTCnet</h2>
-                <p>Join a multi-party video conference</p>
-                <div class="lobby-form">
-                    <input type="text" id="username-input" placeholder="Your Name" />
-                    
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" id="join-room-id-input" placeholder="Room ID" style="flex: 1;" />
-                        <button id="generate-room-btn" class="btn secondary" type="button">Create Room</button>
-                    </div>
-
-                    <div id="camera-preview-container" class="camera-preview">
-                        <video id="preview-video" autoplay playsinline muted></video>
-                    </div>
-                    
-                    <div class="preview-controls">
-                        <button id="preview-toggle-audio-btn" class="btn control-btn active" type="button">
-                            <span class="icon">🎙️</span>
-                        </button>
-                        <button id="preview-toggle-video-btn" class="btn control-btn active" type="button">
-                            <span class="icon">📹</span>
-                        </button>
-                    </div>
-
-                    <button id="lobby-join-btn" class="btn primary">Join Conference</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main Workspace (Hidden Initially) -->
-        <div id="main-workspace" class="workspace-container hidden">
-            <!-- Sidebar / Chat Area -->
-            <aside class="sidebar">
-                <div class="sidebar-header">
-                    <h2>RTCnet</h2>
-                    <div class="status-indicator">
-                        <span id="connection-dot" class="dot offline"></span>
-                        <span id="connection-status">Disconnected</span>
-                    </div>
-                </div>
-
-                <div id="room-info" class="room-info">
-                    <p class="room-link-text">Invite others to join:</p>
-                    <div class="share-box">
-                        <input type="text" id="display-room-id" readonly />
-                        <button id="copy-room-btn" class="btn primary icon-btn" title="Copy Link">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                        </button>
-                    </div>
-                </div>
-
-            <div class="chat-section">
-                <div class="chat-header">
-                    <h3>TEXT-CHAT</h3>
-                </div>
-                <div class="chat-messages" id="chat-messages">
-                    <div class="message system">Welcome To RTCnet. You can now chat with other participants.</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input" placeholder="Type a message..." disabled />
-                    <button id="send-btn" class="btn icon-btn" disabled>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                    </button>
-                </div>
-            </div>
-            </aside>
-
-            <!-- Main Video Area -->
-            <main class="main-content">
-                <div class="conference-area" id="conference-area">
-                    <!-- Pinned Video Area (Hidden if no video is pinned) -->
-                    <div id="pinned-video-container" class="pinned-video-container hidden"></div>
-                    
-                    <!-- Grid of all other videos -->
-                    <div class="video-grid" id="video-grid">
-                        <!-- Local Video -->
-                        <div class="video-card local" id="local-video-wrapper">
-                            <video id="local-video" autoplay playsinline muted></video>
-                            <div class="video-label">You</div>
-                            <button class="pin-btn" onclick="togglePin('local-video-wrapper')">📌</button>
+    <div id="app" class="app-container">
+        <!-- Main Layout -->
+        <div id="meeting-screen" class="screen main-layout">
+            <!-- Left Side: Video Stream -->
+            <div class="left-side">
+                <div id="stream-stage" class="stream-stage">
+                    <div id="main-video-container" class="video-container">
+                        <video id="main-video" autoplay playsinline muted></video>
+                        <div id="main-placeholder" class="placeholder">
+                            <span class="user-initials">?</span>
                         </div>
-                        <!-- Remote videos will be injected here dynamically -->
+                        <div class="user-label">Stream Stage</div>
                     </div>
                 </div>
 
-                <!-- Controls (Bottom Bar) -->
-                <div class="controls-bar">
-                    <button id="toggle-audio-btn" class="btn control-btn active">
-                        <span class="icon">🎙️</span> Mute
-                    </button>
-                    <button id="toggle-video-btn" class="btn control-btn active">
-                        <span class="icon">📹</span> Video Off
-                    </button>
-                    <button id="leave-room-btn" class="btn control-btn danger">
-                        <span class="icon">🚪</span> Leave
-                    </button>
+                <div id="participant-row" class="participant-row">
+                    <!-- Participant thumbnails will be added here -->
                 </div>
-            </main>
-        </div>
 
-    <!-- Scripts -->
-    <script src="js/signaling.js"></script>
-    <script src="js/webrtc.js"></script>
-    <script src="js/main.js"></script>
+                <div class="controls-bar">
+                    <button id="toggle-cam" class="control-btn">Cam Off</button>
+                    <button id="toggle-mic" class="control-btn">Mic Off</button>
+                    <button id="leave-btn" class="control-btn leave">Leave Room</button>
+                </div>
+            </div>
+
+            <!-- Right Side: Join Form then Chat -->
+            <div class="right-side">
+                <!-- Join Form (Visible before joining) -->
+                <div id="join-form" class="side-form-container">
+                    <h2>Join Meeting</h2>
+                    <input type="text" id="username-input" placeholder="User Name">
+                    <input type="text" id="room-id-input" placeholder="Room ID">
+                    <button id="join-btn">Join Room</button>
+                </div>
+
+                <!-- Chat Room (Visible after joining) -->
+                <div id="chat-room" class="chat-container hidden">
+                    <div class="chat-header">Chat Room</div>
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" placeholder="Type a message...">
+                        <button id="send-msg-btn">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
 </body>
 </html>
