@@ -104,6 +104,8 @@ function connectToSocket() {
             await handleAnswer(from, answer);
         } else if (type === 'ice-candidate') {
             await handleIceCandidate(from, candidate);
+        } else if (type === 'cam-status') {
+            updateRemoteMediaUI(from, data.enabled);
         } else if (type === 'chat-message') {
             displayMessage(senderName, text, color);
         } else if (type === 'leave') {
@@ -306,6 +308,34 @@ function sendMessage() {
         });
         displayMessage("You", text, myColor);
         chatInput.value = '';
+    }
+}
+
+function updateRemoteMediaUI(peerId, enabled) {
+    const thumb = document.getElementById(`thumb-${peerId}`);
+    if (thumb) {
+        const video = thumb.querySelector('video');
+        const placeholder = thumb.querySelector('.placeholder');
+        if (enabled) {
+            video.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+        } else {
+            video.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+        }
+    }
+
+    // Also update main stage if this peer is on it
+    const mainVideo = document.getElementById('main-video');
+    if (mainVideo.srcObject === remoteStreams[peerId]) {
+        const placeholder = document.getElementById('main-placeholder');
+        if (enabled) {
+            mainVideo.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+        } else {
+            mainVideo.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+        }
     }
 }
 
