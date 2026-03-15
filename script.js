@@ -59,16 +59,21 @@ function setupLocalVideo() {
     const mainVideo = document.getElementById('main-video');
     const placeholder = document.getElementById('main-placeholder');
     const initials = document.querySelector('#main-placeholder .user-initials');
+    const label = document.querySelector('.stream-stage .user-label');
     
     mainVideo.srcObject = localStream;
     placeholder.style.backgroundColor = myColor;
     initials.innerText = username.charAt(0).toUpperCase();
+    label.innerText = `${username} (You)`;
     
     // If camera is off, show placeholder
     if (!localStream.getVideoTracks()[0].enabled) {
         mainVideo.classList.add('hidden');
         placeholder.classList.remove('hidden');
     }
+
+    // Add myself to the participant row
+    addParticipantThumbnail('local-user', `${username} (You)`, myColor, localStream);
 }
 
 function connectToSocket() {
