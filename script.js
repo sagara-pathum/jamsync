@@ -1,4 +1,5 @@
-const socketUrl = "wss://jamsync-backend-q1ch.onrender.com"; // Update with your backend URL
+
+const socketUrl = "https://webrtc-signal-server-yd16.onrender.com:3001"; // Update with your backend URL
 let socket;
 let localStream;
 let roomId;
