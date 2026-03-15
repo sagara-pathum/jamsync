@@ -1,4 +1,4 @@
-const socketUrl = "https://webrtc-signal-server-yd16.onrender.com:3001"; // Connect to your local backend server
+const socketUrl = "wss://webrtc-signal-server-yd16.onrender.com"; // Your Render backend URL (Corrected)
 let socket;
 let localStream;
 let roomId;
